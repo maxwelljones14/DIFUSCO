@@ -7,11 +7,6 @@ See ["DIFUSCO for MST/SSP/MinCut: Graph-based Diffusion Solvers for Combinatoria
 ![440703644_1480855556189748_1409073861208133370_n](https://github.com/maxwelljones14/DIFUSCO/assets/56135118/5ba23a0b-a2d1-44bf-b1ea-d515623d8f50)
 
 
-<div align="center">
-    <img src="gaussian_difusco_demo_v2.gif" alt="Gaussian" width="256px">
-  <img src="bernouli_difusco_demo.gif" alt="Bernouli" width="256px">
-</div>
-
 ## Setup
 
 ```bash
