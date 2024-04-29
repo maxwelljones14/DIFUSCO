@@ -1,8 +1,11 @@
-# DIFUSCO: Graph-based Diffusion Solvers for Combinatorial Optimization
+# Approximating Graph Algorithms with Graph Neural Networks
 
-See ["DIFUSCO: Graph-based Diffusion Solvers for Combinatorial Optimization"](https://arxiv.org/abs/2302.08224) for the paper associated with this codebase.
 
-![Alt text](tsp_illustration.png?raw=true "TSP Illustration of DIFUSCO")
+Note: This repo was adapted from DIFUSCO: Graph-based Diffusion Solvers for Combinatorial Optimization.
+See ["DIFUSCO for MST/SSP/MinCut: Graph-based Diffusion Solvers for Combinatorial Optimization based on DIFUSCO"].
+
+![440703644_1480855556189748_1409073861208133370_n](https://github.com/maxwelljones14/DIFUSCO/assets/56135118/5ba23a0b-a2d1-44bf-b1ea-d515623d8f50)
+
 
 <div align="center">
     <img src="gaussian_difusco_demo_v2.gif" alt="Gaussian" width="256px">
