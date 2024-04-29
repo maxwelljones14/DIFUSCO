@@ -43,6 +43,12 @@ class TSPGraphDataset(torch.utils.data.Dataset):
       for i in range(tour.shape[0] - 1):
         adj_matrix[tour[i], tour[i + 1]] = 1
       # return points, adj_matrix, tour
+
+    #   print(torch.LongTensor(np.array([idx], dtype=np.int64)).shape,
+    #         torch.from_numpy(points).float().shape,
+    #         torch.from_numpy(adj_matrix).float().shape,
+    #         torch.from_numpy(tour).long().shape)
+
       return (
           torch.LongTensor(np.array([idx], dtype=np.int64)),
           torch.from_numpy(points).float(),

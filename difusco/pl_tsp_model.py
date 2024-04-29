@@ -10,30 +10,77 @@ import torch.utils.data
 from pytorch_lightning.utilities import rank_zero_info
 
 from co_datasets.tsp_graph_dataset import TSPGraphDataset
+from co_datasets.mst_graph_dataset import MSTGraphDataset
+from co_datasets.mincut_graph_dataset import MinCutGraphDataset
+from co_datasets.dijkstra_graph_dataset import DjikstraGraphDataset
 from pl_meta_model import COMetaModel
 from utils.diffusion_schedulers import InferenceSchedule
 from utils.tsp_utils import TSPEvaluator, batched_two_opt_torch, merge_tours
-
+from utils.misc_utils import max_n_minus_1_edges, kruskal, evaluate_mst, find_mincut_approximation, find_mincut, find_dijkstra, find_dijkstra_approximation 
 
 class TSPModel(COMetaModel):
   def __init__(self,
                param_args=None):
     super(TSPModel, self).__init__(param_args=param_args, node_feature_only=False)
 
-    self.train_dataset = TSPGraphDataset(
-        data_file=os.path.join(self.args.storage_path, self.args.training_split),
-        sparse_factor=self.args.sparse_factor,
-    )
+    if param_args.mst_only:
+        self.train_dataset = MSTGraphDataset(
+            data_file=os.path.join(param_args.storage_path, param_args.training_split),
+            sparse_factor=param_args.sparse_factor,
+        )
+        self.test_dataset = MSTGraphDataset(
+            data_file=os.path.join(param_args.storage_path, param_args.test_split),
+            sparse_factor=param_args.sparse_factor,
+        )
+        self.validation_dataset = MSTGraphDataset(
+            data_file=os.path.join(param_args.storage_path, param_args.validation_split),
+            sparse_factor=param_args.sparse_factor,
+        )
+    elif param_args.mincut_only:
+        self.train_dataset = MinCutGraphDataset(
+            data_file=os.path.join(self.args.storage_path, self.args.training_split),
+            sparse_factor=self.args.sparse_factor,
+        )
 
-    self.test_dataset = TSPGraphDataset(
-        data_file=os.path.join(self.args.storage_path, self.args.test_split),
-        sparse_factor=self.args.sparse_factor,
-    )
+        self.test_dataset = MinCutGraphDataset(
+            data_file=os.path.join(self.args.storage_path, self.args.test_split),
+            sparse_factor=self.args.sparse_factor,
+        )
 
-    self.validation_dataset = TSPGraphDataset(
-        data_file=os.path.join(self.args.storage_path, self.args.validation_split),
-        sparse_factor=self.args.sparse_factor,
-    )
+        self.validation_dataset = MinCutGraphDataset(
+            data_file=os.path.join(self.args.storage_path, self.args.validation_split),
+            sparse_factor=self.args.sparse_factor,
+        )
+    elif self.args.dijkstra_only:
+        self.train_dataset = DjikstraGraphDataset(
+            data_file=os.path.join(self.args.storage_path, self.args.training_split),
+            sparse_factor=self.args.sparse_factor,
+        )
+
+        self.test_dataset = DjikstraGraphDataset(
+            data_file=os.path.join(self.args.storage_path, self.args.test_split),
+            sparse_factor=self.args.sparse_factor,
+        )
+
+        self.validation_dataset = DjikstraGraphDataset(
+            data_file=os.path.join(self.args.storage_path, self.args.validation_split),
+            sparse_factor=self.args.sparse_factor,
+        )
+    else:
+        self.train_dataset = TSPGraphDataset(
+            data_file=os.path.join(self.args.storage_path, self.args.training_split),
+            sparse_factor=self.args.sparse_factor,
+        )
+
+        self.test_dataset = TSPGraphDataset(
+            data_file=os.path.join(self.args.storage_path, self.args.test_split),
+            sparse_factor=self.args.sparse_factor,
+        )
+
+        self.validation_dataset = TSPGraphDataset(
+            data_file=os.path.join(self.args.storage_path, self.args.validation_split),
+            sparse_factor=self.args.sparse_factor,
+        )
 
   def forward(self, x, adj, t, edge_index):
     return self.model(x, t, adj, edge_index)
@@ -169,7 +216,7 @@ class TSPModel(COMetaModel):
       points = points.reshape((-1, 2))
       edge_index = edge_index.reshape((2, -1))
       np_points = points.cpu().numpy()
-      np_gt_tour = gt_tour.cpu().numpy().reshape(-1)
+      np_gt_tour = gt_tour.cpu().numpy() # .reshape(-1)
       np_edge_index = edge_index.cpu().numpy()
 
     stacked_tours = []
@@ -203,6 +250,9 @@ class TSPModel(COMetaModel):
       time_schedule = InferenceSchedule(inference_schedule=self.args.inference_schedule,
                                         T=self.diffusion.T, inference_T=steps)
 
+      if self.args.save_gif:
+        gif_adj_mat = []
+
       # Diffusion iterations
       for i in range(steps):
         t1, t2 = time_schedule(i)
@@ -215,45 +265,78 @@ class TSPModel(COMetaModel):
         else:
           xt = self.categorical_denoise_step(
               points, xt, t1, device, edge_index, target_t=t2)
+        
+        if self.args.save_gif:
+          if self.diffusion_type == 'gaussian':
+            adj_mat = xt.cpu().detach().numpy() * 0.5 + 0.5
+          else:
+            adj_mat = xt.cpu().detach().numpy() + 1e-6
+          gif_adj_mat.append(adj_mat)
 
       if self.diffusion_type == 'gaussian':
         adj_mat = xt.cpu().detach().numpy() * 0.5 + 0.5
       else:
         adj_mat = xt.float().cpu().detach().numpy() + 1e-6
-
+    #   print(adj_mat.shape)
+    #   print(adj_mat)
       if self.args.save_numpy_heatmap:
-        self.run_save_numpy_heatmap(adj_mat, np_points, real_batch_idx, split)
+        if not self.args.save_gif:
+            self.run_save_numpy_heatmap(adj_mat, np_points, real_batch_idx, split)
+        else:
+            self.run_save_numpy_heatmap(np.stack(gif_adj_mat), np_points, real_batch_idx, split)
 
-      tours, merge_iterations = merge_tours(
-          adj_mat, np_points, np_edge_index,
-          sparse_graph=self.sparse,
-          parallel_sampling=self.args.parallel_sampling,
-      )
+    if self.args.mst_only:
+        distances = np.linalg.norm(np_points[:, None] - np_points, axis=-1)
+        adj_mat[0] = adj_mat[0] / distances
+        output = kruskal(adj_mat[0])
+        best_solved_cost = evaluate_mst(np_points, output)
+        gt_cost = evaluate_mst(np_points, np_gt_tour)
+    elif self.args.mincut_only:
+        distances = np.sum((np_points[np_edge_index[0]] - np_points[np_edge_index[1]]) ** 2, axis=1) ** .5
+        best_solved_edges = find_mincut_approximation(adj_mat / distances, self.args.sparse_factor, np_points, np_edge_index)
+        best_solved_cost = np.sum((np_points[best_solved_edges[:, 0]] - np_points[best_solved_edges[:, 1]]) ** 2) ** .5
+        gt_edges = np_gt_tour # find_mincut(self.args.sparse_factor, np_points, distances, np_edge_index)
+        gt_cost = np.sum(np.sum((np_points[gt_edges[:, 0]] - np_points[gt_edges[:, 1]]) ** 2, axis=1) ** .5)
+    elif self.args.dijkstra_only:
+        distances = np.sum((np_points[np_edge_index[0]] - np_points[np_edge_index[1]]) ** 2, axis=1) ** .5
+        best_solved_edges = find_dijkstra_approximation(adj_mat / distances, self.args.sparse_factor, np_points, np_edge_index)
+        best_solved_cost = np.sum((np_points[best_solved_edges[:, 0]] - np_points[best_solved_edges[:, 1]]) ** 2) ** .5
+        gt_edges = np_gt_tour
+        gt_cost = np.sum(np.sum((np_points[gt_edges[:, 0]] - np_points[gt_edges[:, 1]]) ** 2, axis=1) ** .5)
 
-      # Refine using 2-opt
-      solved_tours, ns = batched_two_opt_torch(
-          np_points.astype("float64"), np.array(tours).astype('int64'),
-          max_iterations=self.args.two_opt_iterations, device=device)
-      stacked_tours.append(solved_tours)
+    #   tours, merge_iterations = merge_tours(
+    #       adj_mat, np_points, np_edge_index,
+    #       sparse_graph=self.sparse,
+    #       parallel_sampling=self.args.parallel_sampling,
+    #   )
 
-    solved_tours = np.concatenate(stacked_tours, axis=0)
+    #   # Refine using 2-opt
+    #   solved_tours, ns = batched_two_opt_torch(
+    #       np_points.astype("float64"), np.array(tours).astype('int64'),
+    #       max_iterations=self.args.two_opt_iterations, device=device)
+    #   stacked_tours.append(solved_tours)
 
-    tsp_solver = TSPEvaluator(np_points)
-    gt_cost = tsp_solver.evaluate(np_gt_tour)
+    # solved_tours = np.concatenate(stacked_tours, axis=0)
 
-    total_sampling = self.args.parallel_sampling * self.args.sequential_sampling
-    all_solved_costs = [tsp_solver.evaluate(solved_tours[i]) for i in range(total_sampling)]
-    best_solved_cost = np.min(all_solved_costs)
+    # tsp_solver = TSPEvaluator(np_points)
+    # gt_cost = tsp_solver.evaluate(np_gt_tour)
+
+    # total_sampling = self.args.parallel_sampling * self.args.sequential_sampling
+    # all_solved_costs = [tsp_solver.evaluate(solved_tours[i]) for i in range(total_sampling)]
+    # best_solved_cost = np.min(all_solved_costs)
 
     metrics = {
         f"{split}/gt_cost": gt_cost,
-        f"{split}/2opt_iterations": ns,
-        f"{split}/merge_iterations": merge_iterations,
+        f"{split}/2opt_iterations": 0, # ns
+        f"{split}/merge_iterations": 0, # merge_iterations
     }
     for k, v in metrics.items():
       self.log(k, v, on_epoch=True, sync_dist=True)
     self.log(f"{split}/solved_cost", best_solved_cost, prog_bar=True, on_epoch=True, sync_dist=True)
-    return metrics
+    # for k, v in {f"{split}/gt_cost": 0, f"{split}/2opt_iterations": 0, f"{split}/merge_iterations": 0}.items():
+    #     self.log(k, v, on_epoch=True, sync_dist=True)
+    # self.log(f"{split}/solved_cost", 0, prog_bar=True, on_epoch=True, sync_dist=True)
+    return {} # metrics
 
   def run_save_numpy_heatmap(self, adj_mat, np_points, real_batch_idx, split):
     if self.args.parallel_sampling > 1 or self.args.sequential_sampling > 1:
@@ -265,6 +348,8 @@ class TSPModel(COMetaModel):
     real_batch_idx = real_batch_idx.cpu().numpy().reshape(-1)[0]
     np.save(os.path.join(heatmap_path, f"{split}-heatmap-{real_batch_idx}.npy"), adj_mat)
     np.save(os.path.join(heatmap_path, f"{split}-points-{real_batch_idx}.npy"), np_points)
+    heatmap_path_complete = os.path.join(heatmap_path, f"{split}-heatmap-{real_batch_idx}.npy")
+    # print(f"Saved heatmap to {heatmap_path_complete}")
 
   def validation_step(self, batch, batch_idx):
     return self.test_step(batch, batch_idx, split='val')

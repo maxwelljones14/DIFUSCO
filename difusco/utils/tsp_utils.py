@@ -6,6 +6,9 @@ import numpy as np
 import scipy.sparse
 import scipy.spatial
 import torch
+import sys
+sys.path.append(".")
+sys.path.append("difusco/utils/cython_merge")
 from utils.cython_merge.cython_merge import merge_cython
 
 

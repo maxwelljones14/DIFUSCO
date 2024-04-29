@@ -16,3 +16,4 @@ def mis_decode_np(predictions, adj_matrix):
     solution[next_node] = 1
 
   return (solution == 1).astype(int)
+

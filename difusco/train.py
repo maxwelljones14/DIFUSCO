@@ -13,7 +13,7 @@ from pytorch_lightning.strategies.ddp import DDPStrategy
 from pytorch_lightning.utilities import rank_zero_info
 
 from pl_tsp_model import TSPModel
-from pl_mis_model import MISModel
+# from pl_mis_model import MISModel
 
 
 def arg_parser():
@@ -52,6 +52,7 @@ def arg_parser():
   parser.add_argument('--aggregation', type=str, default='sum')
   parser.add_argument('--two_opt_iterations', type=int, default=1000)
   parser.add_argument('--save_numpy_heatmap', action='store_true')
+  parser.add_argument("--save_gif", action="store_true")
 
   parser.add_argument('--project_name', type=str, default='tsp_diffusion')
   parser.add_argument('--wandb_entity', type=str, default=None)
@@ -63,6 +64,11 @@ def arg_parser():
   parser.add_argument('--do_train', action='store_true')
   parser.add_argument('--do_test', action='store_true')
   parser.add_argument('--do_valid_only', action='store_true')
+
+  parser.add_argument("--mst_only", action="store_true")
+  parser.add_argument("--mincut_only", action="store_true")
+  parser.add_argument("--dijkstra_only", action="store_true")
+  parser.add_argument("--device", type=int, default=0)
 
   args = parser.parse_args()
   return args
@@ -76,7 +82,7 @@ def main(args):
     model_class = TSPModel
     saving_mode = 'min'
   elif args.task == 'mis':
-    model_class = MISModel
+    # model_class = MISModel
     saving_mode = 'max'
   else:
     raise NotImplementedError
@@ -105,7 +111,8 @@ def main(args):
 
   trainer = Trainer(
       accelerator="auto",
-      devices=torch.cuda.device_count() if torch.cuda.is_available() else None,
+    #   devices=1, # torch.cuda.device_count() if torch.cuda.is_available() else None, # 1, #
+      devices=[args.device],
       max_epochs=epochs,
       callbacks=[TQDMProgressBar(refresh_rate=20), checkpoint_callback, lr_callback],
       logger=wandb_logger,
