@@ -34,7 +34,7 @@ cd -
 Please check the `data` folder.
 
 ## Reproduction
-
+Our reproducing scripts are the same as the ones in the main file - the only difference is that in the 'train.py' call, you can add arguments --mst_only, or --mincut_only, or --dijkstra_only. We also provide scripts for creating the data for these graph problems in the data file
 Please check the [reproducing_scripts](reproducing_scripts.md) for more details.
 
 ## Pretrained Checkpoints
